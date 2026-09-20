@@ -103,3 +103,20 @@ def test_paths_ensure_directories(tmp_path: Path) -> None:
     assert (tmp_path / "custom_data" / "logs").is_dir()
     assert (tmp_path / "custom_data" / "memory").is_dir()
     assert (tmp_path / "custom_data" / "documents").is_dir()
+
+
+def test_specified_config_not_found(tmp_path: Path) -> None:
+    """Verify specifying a non-existent config file raises ConfigurationError."""
+    missing = tmp_path / "does_not_exist.yaml"
+    with pytest.raises(ConfigurationError) as exc_info:
+        load_settings(config_file=missing)
+    assert "Specified configuration file does not exist" in str(exc_info.value)
+
+
+def test_specified_env_not_found(tmp_path: Path) -> None:
+    """Verify specifying a non-existent env file raises ConfigurationError."""
+    missing = tmp_path / "does_not_exist.env"
+    with pytest.raises(ConfigurationError) as exc_info:
+        load_settings(env_file=missing)
+    assert "Specified environment file does not exist" in str(exc_info.value)
+

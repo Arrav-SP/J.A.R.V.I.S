@@ -66,3 +66,27 @@ def test_log_level_filtering(tmp_path: Path) -> None:
     assert "Debug message" not in content
     assert "Info message" not in content
     assert "Warning message that should be recorded" in content
+
+
+def test_setup_logging_failure_raises_initialization_error(tmp_path: Path) -> None:
+    """Verify OSError during log file initialization raises InitializationError."""
+    from app.core.exceptions import InitializationError
+
+    # Create a regular file where a directory would be expected
+    blocker = tmp_path / "blocker_file"
+    blocker.write_text("blocking", encoding="utf-8")
+
+    invalid_log = blocker / "sub_dir" / "jarvis.log"
+    config = LoggingConfig(
+        level="INFO",
+        console=False,
+        file_logging=True,
+        log_file=str(invalid_log),
+    )
+
+    import pytest
+
+    with pytest.raises(InitializationError) as exc_info:
+        setup_logging(config=config, base_dir=tmp_path)
+    assert "Failed to initialize file logger" in str(exc_info.value)
+

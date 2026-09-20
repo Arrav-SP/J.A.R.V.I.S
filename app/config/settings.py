@@ -133,12 +133,24 @@ def load_settings(
     root_dir = Path(base_dir).resolve() if base_dir else Path(__file__).resolve().parent.parent.parent
 
     # 2. Load .env file
-    target_env_file = Path(env_file).resolve() if env_file else root_dir / ".env"
-    if target_env_file.exists():
+    if env_file:
+        target_env_file = Path(env_file).resolve()
+        if not target_env_file.exists():
+            raise ConfigurationError(f"Specified environment file does not exist: {target_env_file}")
         load_dotenv(target_env_file, override=True)
+    else:
+        target_env_file = root_dir / ".env"
+        if target_env_file.exists():
+            load_dotenv(target_env_file, override=True)
 
     # 3. Load YAML configuration
-    target_config_file = Path(config_file).resolve() if config_file else root_dir / "config.yaml"
+    if config_file:
+        target_config_file = Path(config_file).resolve()
+        if not target_config_file.exists():
+            raise ConfigurationError(f"Specified configuration file does not exist: {target_config_file}")
+    else:
+        target_config_file = root_dir / "config.yaml"
+
     raw_config: Dict[str, Any] = {}
     if target_config_file.exists():
         try:

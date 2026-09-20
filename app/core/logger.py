@@ -53,17 +53,22 @@ def setup_logging(
         if not log_path.is_absolute() and base_dir is not None:
             log_path = (base_dir / log_path).resolve()
 
-        log_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
 
-        file_handler = RotatingFileHandler(
-            filename=str(log_path),
-            maxBytes=config.max_bytes,
-            backupCount=config.backup_count,
-            encoding="utf-8",
-        )
-        file_handler.setLevel(getattr(logging, config.level, logging.INFO))
-        file_handler.setFormatter(formatter)
-        root_logger.addHandler(file_handler)
+            file_handler = RotatingFileHandler(
+                filename=str(log_path),
+                maxBytes=config.max_bytes,
+                backupCount=config.backup_count,
+                encoding="utf-8",
+            )
+            file_handler.setLevel(getattr(logging, config.level, logging.INFO))
+            file_handler.setFormatter(formatter)
+            root_logger.addHandler(file_handler)
+        except OSError as err:
+            from app.core.exceptions import InitializationError
+
+            raise InitializationError(f"Failed to initialize file logger at '{log_path}': {err}") from err
 
     # Prevent propagation to Python default root logger
     root_logger.propagate = False
