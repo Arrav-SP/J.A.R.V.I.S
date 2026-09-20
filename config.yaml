@@ -1,0 +1,25 @@
+# ==============================================================================
+# JARVIS — Configuration File
+# ==============================================================================
+
+system:
+  name: "JARVIS"
+  version: "0.1.0"
+  environment: "development"
+  mode: "terminal"
+  debug: false
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s [%(levelname)s] [%(name)s]: %(message)s"
+  console: true
+  file_logging: true
+  log_file: "data/logs/jarvis.log"
+  max_bytes: 10485760 # 10 MB
+  backup_count: 5
+
+paths:
+  data_dir: "data"
+  logs_dir: "data/logs"
+  memory_dir: "data/memory"
+  documents_dir: "data/documents"
