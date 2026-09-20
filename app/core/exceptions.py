@@ -33,3 +33,19 @@ class InitializationError(JarvisError):
 class SystemStateError(JarvisError):
     """Raised when an operation is attempted in an invalid system state."""
     pass
+
+
+class ModelError(JarvisError):
+    """Base exception for model/LLM provider failures."""
+    pass
+
+
+class ModelUnavailableError(ModelError):
+    """Raised when the requested LLM provider or model service is unreachable."""
+    pass
+
+
+class ModelTimeoutError(ModelError):
+    """Raised when the LLM provider fails to respond within the configured timeout."""
+    pass
+

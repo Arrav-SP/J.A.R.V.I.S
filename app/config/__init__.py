@@ -2,6 +2,7 @@
 
 from app.config.settings import (
     LoggingConfig,
+    ModelConfig,
     PathsConfig,
     Settings,
     SystemConfig,
@@ -12,6 +13,7 @@ from app.config.settings import (
 
 __all__ = [
     "LoggingConfig",
+    "ModelConfig",
     "PathsConfig",
     "Settings",
     "SystemConfig",

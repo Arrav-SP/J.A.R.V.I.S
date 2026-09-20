@@ -10,6 +10,7 @@ from app import __version__
 from app.config import get_settings, reload_settings
 from app.core import (
     ConfigurationError,
+    Orchestrator,
     get_banner,
     get_logger,
     get_shutdown_banner,
@@ -54,10 +55,10 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
     return parser.parse_args(args)
 
 
-def run_terminal_repl(mode: str) -> int:
-    """Run the basic interactive terminal loop for Part 0."""
+def run_terminal_repl(mode: str, orchestrator: Orchestrator) -> int:
+    """Run the interactive terminal conversation loop."""
     print("JARVIS Core is ready in terminal mode.")
-    print("Commands: 'status', 'help', 'clear', 'exit' / 'quit'\n")
+    print("Commands: 'status', 'reset', 'help', 'clear', 'exit' / 'quit'\n")
 
     logger = get_logger("terminal")
     while True:
@@ -75,18 +76,22 @@ def run_terminal_repl(mode: str) -> int:
             break
         elif cmd == "status":
             print(get_status_text(mode=mode, status="ready"))
+        elif cmd in {"reset", "new"}:
+            orchestrator.reset_session()
+            print("Conversation session reset, sir.\n")
         elif cmd == "help":
-            print("JARVIS Terminal Mode (Part 0 — Project Foundation)")
+            print("JARVIS Terminal Mode Commands:")
             print("  status : Display current core system status")
-            print("  help   : Show this help message")
+            print("  reset  : Reset the current conversation history")
             print("  clear  : Clear terminal screen")
-            print("  exit   : Shut down JARVIS Core")
+            print("  help   : Show this help message")
+            print("  exit   : Shut down JARVIS Core\n")
         elif cmd == "clear":
             print("\033[H\033[J", end="")
         else:
-            print(f"[JARVIS Foundation] Received: '{prompt_input}'")
-            print("Part 0 is active. Core brain & LLM reasoning will be connected in Part 1.")
-            logger.debug("Terminal input received: %s", prompt_input)
+            response = orchestrator.process_message(prompt_input)
+            print(f"\nJARVIS: {response}\n")
+            logger.debug("Dialogue turn completed.")
 
     print(get_shutdown_banner())
     logger.info("JARVIS Core shut down cleanly.")
@@ -126,11 +131,12 @@ def main(args: Optional[List[str]] = None) -> int:
         setup_logging(settings.logging, settings.paths.base_dir)
         logger = get_logger("core")
         logger.info(
-            "JARVIS Core initialized (name=%s, version=%s, env=%s, mode=%s)",
+            "JARVIS Core initialized (name=%s, version=%s, env=%s, mode=%s, model_provider=%s)",
             settings.system.name,
             settings.system.version,
             settings.system.environment,
             settings.system.mode,
+            settings.model.provider,
         )
 
         if parsed_args.check:
@@ -140,8 +146,11 @@ def main(args: Optional[List[str]] = None) -> int:
         # Output startup banner
         print(get_banner(mode=mode, status="ready"))
 
-        # Run terminal REPL
-        return run_terminal_repl(mode)
+        # Initialize Orchestrator
+        orchestrator = Orchestrator(settings=settings)
+
+        # Run terminal conversation REPL
+        return run_terminal_repl(mode, orchestrator)
 
     except ConfigurationError as err:
         sys.stderr.write(f"Configuration error: {err}\n")

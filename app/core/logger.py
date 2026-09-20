@@ -83,10 +83,6 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
     Example:
         get_logger("config") -> logger named "jarvis.config"
     """
-    global _is_logging_configured
-    if not _is_logging_configured:
-        setup_logging()
-
     if not name or name == "jarvis":
         return logging.getLogger("jarvis")
 

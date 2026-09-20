@@ -100,16 +100,39 @@ class PathsConfig(BaseModel):
             directory.mkdir(parents=True, exist_ok=True)
 
 
+class ModelConfig(BaseModel):
+    """LLM provider and model configuration."""
+
+    provider: str = Field(default="mock", description="Model provider: mock, ollama")
+    model_name: str = "llama3.2"
+    base_url: str = "http://localhost:11434"
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    timeout_seconds: float = Field(default=30.0, gt=0.0)
+    max_context_messages: int = Field(default=20, gt=0)
+    fallback_to_mock: bool = True
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, v: str) -> str:
+        valid_providers = {"mock", "ollama"}
+        v_clean = v.strip().lower()
+        if v_clean not in valid_providers:
+            raise ValueError(f"Invalid model provider '{v}'. Allowed: {', '.join(sorted(valid_providers))}")
+        return v_clean
+
+
 class Settings(BaseModel):
     """Complete application settings."""
 
     system: SystemConfig = Field(default_factory=SystemConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
+    model: ModelConfig = Field(default_factory=ModelConfig)
 
     def ensure_directories(self) -> None:
         """Convenience method to ensure configured directories exist."""
         self.paths.ensure_directories()
+
 
 
 # Singleton instance cache
@@ -169,6 +192,7 @@ def load_settings(
     system_data = raw_config.get("system", {})
     logging_data = raw_config.get("logging", {})
     paths_data = raw_config.get("paths", {})
+    model_data = raw_config.get("model", {})
 
     # Apply environment variable overrides
     if "JARVIS_ENV" in os.environ:
@@ -181,6 +205,21 @@ def load_settings(
     if "JARVIS_LOG_LEVEL" in os.environ:
         logging_data["level"] = os.environ["JARVIS_LOG_LEVEL"]
 
+    if "JARVIS_MODEL_PROVIDER" in os.environ:
+        model_data["provider"] = os.environ["JARVIS_MODEL_PROVIDER"]
+    if "JARVIS_MODEL_NAME" in os.environ:
+        model_data["model_name"] = os.environ["JARVIS_MODEL_NAME"]
+    if "JARVIS_MODEL_BASE_URL" in os.environ:
+        model_data["base_url"] = os.environ["JARVIS_MODEL_BASE_URL"]
+    if "JARVIS_MODEL_TEMPERATURE" in os.environ:
+        try:
+            model_data["temperature"] = float(os.environ["JARVIS_MODEL_TEMPERATURE"])
+        except ValueError as err:
+            raise ConfigurationError(f"Invalid temperature in JARVIS_MODEL_TEMPERATURE: {err}") from err
+    if "JARVIS_MODEL_FALLBACK" in os.environ:
+        fallback_val = os.environ["JARVIS_MODEL_FALLBACK"].strip().lower()
+        model_data["fallback_to_mock"] = fallback_val in {"true", "1", "yes"}
+
     paths_data["base_dir"] = root_dir
 
     # Instantiate and validate models
@@ -188,7 +227,13 @@ def load_settings(
         system_cfg = SystemConfig(**system_data)
         logging_cfg = LoggingConfig(**logging_data)
         paths_cfg = PathsConfig(**paths_data)
-        settings_instance = Settings(system=system_cfg, logging=logging_cfg, paths=paths_cfg)
+        model_cfg = ModelConfig(**model_data)
+        settings_instance = Settings(
+            system=system_cfg,
+            logging=logging_cfg,
+            paths=paths_cfg,
+            model=model_cfg,
+        )
     except Exception as err:
         raise ConfigurationError(f"Configuration validation error: {err}") from err
 

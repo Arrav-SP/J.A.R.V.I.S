@@ -27,6 +27,17 @@ The system is developed incrementally following the architecture and roadmap blu
 - [x] Application entry points (`python -m app`, `python main.py`)
 - [x] Interactive terminal mode & completion status verification
 
+### **PART 1 — JARVIS Core / Brain** :white_check_mark: Complete
+
+- [x] Replaceable model abstraction layer (`BaseLLMProvider`, `ChatMessage`, `ModelResponse`)
+- [x] LLM providers: local **Ollama** (`http://localhost:11434`) and deterministic zero-dependency **Mock Provider**
+- [x] Central **Orchestrator** managing message lifecycle: `User -> Session -> Context -> Model -> Response -> Session`
+- [x] In-memory **Session Management** with isolated conversation history
+- [x] **Context Manager** assembling system prompts with sliding-window truncation
+- [x] **Model Router** for task-based model selection
+- [x] Multi-turn conversational terminal REPL loop with context retention
+- [x] Graceful error recovery for model unavailability and request timeouts
+
 ---
 
 ## Getting Started
@@ -35,6 +46,7 @@ The system is developed incrementally following the architecture and roadmap blu
 
 - Python 3.10+ (tested on Python 3.14.5)
 - Windows 10/11
+- Optional: [Ollama](https://ollama.com/) for local LLM inference (e.g. `ollama run llama3.2`)
 
 ### 2. Environment Setup
 
@@ -62,22 +74,43 @@ Available environment variables:
 - `JARVIS_MODE`: `terminal`
 - `JARVIS_DEBUG`: `true` or `false`
 - `JARVIS_LOG_LEVEL`: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
+- `JARVIS_MODEL_PROVIDER`: `mock` (default for testing) or `ollama` (for local LLM)
+- `JARVIS_MODEL_NAME`: `llama3.2`, `mistral`, etc.
+- `JARVIS_MODEL_BASE_URL`: `http://localhost:11434`
+- `JARVIS_MODEL_TEMPERATURE`: float between `0.0` and `2.0`
+- `JARVIS_MODEL_FALLBACK`: `true` (falls back to mock if Ollama is unreachable)
 
 ---
 
 ## Running JARVIS
 
-### Interactive Terminal Mode
+### Interactive Terminal Conversation Mode
 
-Start JARVIS in terminal mode:
+Start JARVIS and interact directly with the Core Intelligence Layer:
 
 ```powershell
 python -m app
-```
-or via the root launcher:
-```powershell
+# or
 python main.py
 ```
+
+Example session:
+```text
+JARVIS> Explain recursion.
+
+JARVIS: Recursion is a programming concept where a function calls itself directly or indirectly to solve smaller instances of a problem. Every recursive function must define a base case to terminate execution and prevent infinite stack overflow.
+
+JARVIS> What did I just ask you?
+
+JARVIS: You previously asked: 'Explain recursion.'
+```
+
+#### In-Session Commands
+- `status`: Display current core system status
+- `reset`: Clear the active session conversation history
+- `clear`: Clear the terminal screen
+- `help`: Show available commands
+- `exit` / `quit`: Shut down JARVIS Core cleanly
 
 ### Status Check
 
@@ -95,7 +128,7 @@ Status: ready
 
 ### Configuration Validation
 
-Validate paths and settings without launching the terminal loop:
+Validate paths and settings without launching the conversation loop:
 
 ```powershell
 python -m app --check
@@ -105,7 +138,7 @@ python -m app --check
 
 ## Running Tests
 
-Run the complete test suite:
+Run the complete test suite (45 unit and integration tests):
 
 ```powershell
 pytest -v
@@ -113,38 +146,6 @@ pytest -v
 
 ---
 
-## Project Structure
-
-```text
-JARVIS/
-│
-├── app/
-│   ├── config/              # Configuration schemas & settings loader
-│   ├── core/                # Core foundation: logging, exceptions, banners
-│   ├── agents/              # Autonomous agent workflows (future phases)
-│   ├── api/                 # Multi-device API gateway (future phases)
-│   ├── events/              # Event bus & proactive triggers (future phases)
-│   ├── integrations/        # External services (future phases)
-│   ├── memory/              # Short/long-term & semantic memory (future phases)
-│   ├── safety/              # Permissions & security sandboxing (future phases)
-│   ├── tools/               # Tool registry & executors (future phases)
-│   ├── vision/              # Screen & camera perception (future phases)
-│   └── voice/               # Wake word, STT, TTS (future phases)
-│
-├── clients/                 # Desktop and mobile clients
-├── data/                    # Local data directories (logs, memory, documents)
-│   └── logs/                # Rotating logs (jarvis.log)
-├── docs/                    # Architecture documents and specifications
-├── tests/                   # Automated test suite
-├── .env.example             # Environment variables template
-├── config.yaml              # Core configuration file
-├── requirements.txt         # Pinned foundation dependencies
-├── main.py                  # Root application launcher
-└── README.md                # Project documentation
-```
-
----
-
 ## Next Phase
 
-**PART 1 — JARVIS Core / Brain** (Orchestrator, Session Manager, Context Manager, Replaceable Model Interface & Router).
+**PART 2 — Personality Engine** (Persona configuration, Tone, Humor, Sarcasm, Formality, Verbosity, Operating Modes: Normal, Coding, Study, Research, Emergency).
