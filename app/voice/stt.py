@@ -9,9 +9,13 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import logging
+import os
 import time
 from typing import Any, List, Optional
 import numpy as np
+
+# Suppress Hugging Face Windows developer mode symlinks warning
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
 logger = logging.getLogger("jarvis.voice.stt")
 
@@ -52,15 +56,19 @@ class FasterWhisperSTTProvider(BaseSTTProvider):
 
     def __init__(
         self,
-        model_name: str = "tiny.en",
+        model_name: str = "base.en",
         device: str = "cpu",
         compute_type: str = "int8",
         download_root: Optional[str] = None,
+        initial_prompt: Optional[str] = (
+            "Arav, Aarav, Vellore, Tamil Nadu, forecast, weather, JARVIS, programming, recursion, regression"
+        ),
     ) -> None:
         self.model_name = model_name
         self.device = device
         self.compute_type = compute_type
         self.download_root = download_root
+        self.initial_prompt = initial_prompt
         self._model: Optional[Any] = None
         self._initialized: bool = False
         self._init_model()
@@ -110,6 +118,7 @@ class FasterWhisperSTTProvider(BaseSTTProvider):
                 beam_size=5,
                 language="en",
                 condition_on_previous_text=False,
+                initial_prompt=self.initial_prompt,
             )
 
             text_chunks: List[str] = []
@@ -168,9 +177,10 @@ class MockSTTProvider(BaseSTTProvider):
 
 def get_stt_provider(
     provider: str = "faster-whisper",
-    model: str = "tiny.en",
+    model: str = "base.en",
     device: str = "cpu",
     compute_type: str = "int8",
+    initial_prompt: Optional[str] = "Aarav, JARVIS, programming, recursion, regression",
     fallback_to_mock: bool = True,
 ) -> BaseSTTProvider:
     """Factory to instantiate the configured STT provider with graceful fallback."""
@@ -180,7 +190,12 @@ def get_stt_provider(
 
     if clean == "faster-whisper":
         try:
-            stt = FasterWhisperSTTProvider(model_name=model, device=device, compute_type=compute_type)
+            stt = FasterWhisperSTTProvider(
+                model_name=model,
+                device=device,
+                compute_type=compute_type,
+                initial_prompt=initial_prompt,
+            )
             if stt.is_available():
                 return stt
             if fallback_to_mock:

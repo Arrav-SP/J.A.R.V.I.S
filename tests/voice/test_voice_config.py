@@ -16,7 +16,7 @@ def test_default_voice_config() -> None:
     assert cfg.channels == 1
     assert cfg.chunk_duration_ms == 30
     assert cfg.stt.provider == "faster-whisper"
-    assert cfg.stt.model == "tiny.en"
+    assert cfg.stt.model == "base.en"
     assert cfg.tts.provider == "sapi5"
     assert cfg.tts.speed == 1.0
     assert cfg.vad.enabled is True

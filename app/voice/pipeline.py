@@ -98,6 +98,7 @@ class VoicePipeline:
         self._lock = threading.Lock()
         self._turn_callback: Optional[Callable[[str, str], None]] = None
         self.last_telemetry: Dict[str, Any] = {}
+        self._preroll_buffer: List[AudioFrame] = []
 
     @property
     def stt(self) -> BaseSTTProvider:
@@ -108,6 +109,7 @@ class VoicePipeline:
                 model=self.config.stt.model,
                 device=self.config.stt.device,
                 compute_type=self.config.stt.compute_type,
+                initial_prompt=self.config.stt.initial_prompt,
                 fallback_to_mock=self.config.stt.fallback_to_mock,
             )
         return self._stt
@@ -166,6 +168,7 @@ class VoicePipeline:
             self.interruption.interrupt(reason="pipeline_shutdown")
             self.audio_manager.stop_recording()
             self.state = PipelineState.IDLE
+            self._preroll_buffer.clear()
             logger.info("Voice pipeline stopped.")
 
     def trigger_push_to_talk(self) -> None:
@@ -175,12 +178,23 @@ class VoicePipeline:
             self._running = True
             self.segmenter.reset()
             self.state = PipelineState.RECORDING_SPEECH
+            # Pre-seed segmenter with recent audio frames so onset syllable is not lost
+            for pf in self._preroll_buffer:
+                self.segmenter.process_frame(pf)
+            self._preroll_buffer.clear()
             if not self.audio_manager.is_recording():
                 self.audio_manager.start_recording(self._on_audio_frame)
 
     def _on_audio_frame(self, frame: AudioFrame) -> None:
         """Process incoming audio frame through pipeline state machine."""
         if not self._running:
+            return
+
+        # Idle buffer: maintain rolling ~180ms buffer to prevent onset word clipping
+        if self.state == PipelineState.IDLE:
+            self._preroll_buffer.append(frame)
+            if len(self._preroll_buffer) > 6:
+                self._preroll_buffer.pop(0)
             return
 
         # Barge-in: if JARVIS is speaking and user starts talking, interrupt playback!
@@ -298,8 +312,8 @@ class VoicePipeline:
                 self.state = PipelineState.LISTENING_WAKE_WORD
             else:
                 self.state = PipelineState.IDLE
-                if self.config.mode == "push_to_talk" and self.audio_manager.is_recording():
-                    self.audio_manager.stop_recording()
+                self._preroll_buffer.clear()
+                # Maintain warm audio stream to eliminate hardware restart latency between turns
 
     def get_status(self) -> Dict[str, Any]:
         """Return a structured dictionary describing active voice pipeline status."""

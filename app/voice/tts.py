@@ -9,6 +9,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import logging
+import re
 import threading
 import time
 from typing import Any, List, Optional
@@ -53,6 +54,41 @@ class BaseTTSProvider(ABC):
     @abstractmethod
     def list_voices(self) -> List[str]:
         """Return list of available voice identifiers."""
+
+
+# Phonetic replacements for words/proper nouns that US English SAPI voices mispronounce
+_SAPI_PRONUNCIATION_OVERRIDES = {
+    r"\bAarav\b": "Ah-rav",
+    r"\bArav\b": "Ah-rav",
+}
+
+
+def _clean_text_for_sapi(text: str) -> str:
+    """Format and strip markdown symbols, tables, and emojis for natural SAPI speech."""
+    t = text
+    # Remove code blocks
+    t = re.sub(r"```[\s\S]*?```", " [code block omitted] ", t)
+    t = re.sub(r"`[^`\n]*`", "", t)
+    # Remove markdown table dividers like |---|---|
+    t = re.sub(r"\|[-:\s|]+\|", "", t)
+    # Replace table column separators with pauses
+    t = t.replace("|", ", ")
+    # Remove markdown headers and emphasis
+    t = re.sub(r"#{1,6}\s*", "", t)
+    t = re.sub(r"\*{1,3}([^*]+)\*{1,3}", r"\1", t)
+    t = re.sub(r"_{1,3}([^_]+)_{1,3}", r"\1", t)
+    # Remove bullet points and quote markers
+    t = re.sub(r"^\s*[-*+>]\s*", "", t, flags=re.MULTILINE)
+    # Strip emojis and astral unicode symbols
+    t = re.sub(r"[\U00010000-\U0010ffff]", "", t)
+    # Normalize special unicode spaces and symbols
+    t = t.replace("\u202f", " ").replace("\u00a0", " ").replace("≈", "approximately ")
+    # Apply phonetic overrides for proper nouns
+    for pattern, replacement in _SAPI_PRONUNCIATION_OVERRIDES.items():
+        t = re.sub(pattern, replacement, t, flags=re.IGNORECASE)
+    # Collapse multiple whitespace
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
 
 
 class WindowsSapiTTSProvider(BaseTTSProvider):
@@ -107,6 +143,10 @@ class WindowsSapiTTSProvider(BaseTTSProvider):
         if not clean_text:
             return
 
+        spoken_text = _clean_text_for_sapi(clean_text)
+        if not spoken_text:
+            return
+
         def _speak_worker() -> None:
             self._is_speaking = True
             try:
@@ -114,7 +154,7 @@ class WindowsSapiTTSProvider(BaseTTSProvider):
 
                 speaker = self._get_speaker()
                 # 0 = SVSFDefault (synchronous inside this worker thread)
-                speaker.Speak(clean_text, 0)
+                speaker.Speak(spoken_text, 0)
             except Exception as err:
                 logger.error("SAPI speak error: %s", err)
             finally:

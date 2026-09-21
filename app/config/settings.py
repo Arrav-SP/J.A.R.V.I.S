@@ -103,18 +103,23 @@ class PathsConfig(BaseModel):
 class ModelConfig(BaseModel):
     """LLM provider and model configuration."""
 
-    provider: str = Field(default="mock", description="Model provider: mock, ollama")
-    model_name: str = "llama3.2"
+    provider: str = Field(default="hybrid", description="Model provider: hybrid, groq, gemini, ollama, mock")
+    model_name: str = "openai/gpt-oss-120b"
+    api_key: Optional[str] = None
     base_url: str = "http://localhost:11434"
+    groq_model: str = "openai/gpt-oss-120b"
+    gemini_model: str = "gemini-1.5-flash"
+    offline_provider: str = "ollama"
+    offline_model: str = "llama3.2"
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
-    timeout_seconds: float = Field(default=30.0, gt=0.0)
+    timeout_seconds: float = Field(default=15.0, gt=0.0)
     max_context_messages: int = Field(default=20, gt=0)
     fallback_to_mock: bool = True
 
     @field_validator("provider")
     @classmethod
     def validate_provider(cls, v: str) -> str:
-        valid_providers = {"mock", "ollama"}
+        valid_providers = {"mock", "ollama", "groq", "gemini", "hybrid"}
         v_clean = v.strip().lower()
         if v_clean not in valid_providers:
             raise ValueError(f"Invalid model provider '{v}'. Allowed: {', '.join(sorted(valid_providers))}")
@@ -157,9 +162,13 @@ class STTConfig(BaseModel):
     """Speech-to-text configuration."""
 
     provider: str = Field(default="faster-whisper", description="STT provider: 'faster-whisper' or 'mock'")
-    model: str = Field(default="tiny.en", description="Whisper model: tiny.en, base.en, small.en, etc.")
+    model: str = Field(default="base.en", description="Whisper model: tiny.en, base.en, small.en, etc.")
     device: str = Field(default="cpu", description="Inference device: cpu, cuda, auto")
     compute_type: str = Field(default="int8", description="Quantization: int8, float16, float32")
+    initial_prompt: str = Field(
+        default="Arav, Aarav, Vellore, Tamil Nadu, forecast, weather, JARVIS, programming, recursion, regression",
+        description="Vocabulary bias prompt for accurate proper name recognition",
+    )
     fallback_to_mock: bool = True
 
 
@@ -258,7 +267,7 @@ def load_settings(
     else:
         target_env_file = root_dir / ".env"
         if target_env_file.exists():
-            load_dotenv(target_env_file, override=True)
+            load_dotenv(target_env_file, override=False)
 
     # 3. Load YAML configuration
     if config_file:
@@ -304,8 +313,18 @@ def load_settings(
         model_data["provider"] = os.environ["JARVIS_MODEL_PROVIDER"]
     if "JARVIS_MODEL_NAME" in os.environ:
         model_data["model_name"] = os.environ["JARVIS_MODEL_NAME"]
+    if os.environ.get("JARVIS_MODEL_API_KEY", "").strip():
+        model_data["api_key"] = os.environ["JARVIS_MODEL_API_KEY"].strip()
+    elif os.environ.get("GROQ_API_KEY", "").strip():
+        model_data["api_key"] = os.environ["GROQ_API_KEY"].strip()
+    elif os.environ.get("GEMINI_API_KEY", "").strip():
+        model_data["api_key"] = os.environ["GEMINI_API_KEY"].strip()
     if "JARVIS_MODEL_BASE_URL" in os.environ:
         model_data["base_url"] = os.environ["JARVIS_MODEL_BASE_URL"]
+    if "JARVIS_MODEL_OFFLINE_PROVIDER" in os.environ:
+        model_data["offline_provider"] = os.environ["JARVIS_MODEL_OFFLINE_PROVIDER"]
+    if "JARVIS_MODEL_OFFLINE_MODEL" in os.environ:
+        model_data["offline_model"] = os.environ["JARVIS_MODEL_OFFLINE_MODEL"]
     if "JARVIS_MODEL_TEMPERATURE" in os.environ:
         try:
             model_data["temperature"] = float(os.environ["JARVIS_MODEL_TEMPERATURE"])

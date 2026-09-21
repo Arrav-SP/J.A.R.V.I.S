@@ -64,6 +64,14 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         default=None,
         help="Set voice operational mode (text, push_to_talk, wake_word).",
     )
+    parser.add_argument(
+        "--groq-key",
+        "--api-key",
+        dest="groq_key",
+        type=str,
+        default=None,
+        help="Groq Cloud API key for cloud LLM intelligence.",
+    )
     return parser.parse_args(args)
 
 
@@ -191,6 +199,36 @@ def run_terminal_repl(mode: str, orchestrator: Orchestrator, voice_pipeline: Opt
                 voice_pipeline.trigger_push_to_talk()
             else:
                 print("[JARVIS] Voice pipeline is not active. Enable with 'voice on' or run with --voice.\n")
+        elif cmd.startswith("key ") or cmd.startswith("groq "):
+            parts = prompt_input.split(maxsplit=1)
+            if len(parts) == 2 and parts[1].strip():
+                new_key = parts[1].strip()
+                orchestrator.settings.model.api_key = new_key
+                from app.core.model import get_model_provider
+                orchestrator.llm_provider = get_model_provider(orchestrator.settings.model)
+
+                # Persist to .env automatically
+                try:
+                    from pathlib import Path
+                    env_p = Path(".env")
+                    lines = env_p.read_text(encoding="utf-8").splitlines() if env_p.exists() else []
+                    new_lines = []
+                    key_replaced = False
+                    for line in lines:
+                        if line.startswith("GROQ_API_KEY="):
+                            new_lines.append(f"GROQ_API_KEY={new_key}")
+                            key_replaced = True
+                        else:
+                            new_lines.append(line)
+                    if not key_replaced:
+                        new_lines.append(f"GROQ_API_KEY={new_key}")
+                    env_p.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+                except Exception as save_err:
+                    logger.warning("Could not persist GROQ_API_KEY to .env: %s", save_err)
+
+                print(f"[JARVIS] Cloud API key activated ({new_key[:8]}...) and saved to .env!\n")
+            else:
+                print("Usage: key <your_groq_api_key>\n")
         elif cmd == "help":
             print("JARVIS Terminal Mode Commands:")
             print("  status                   : Display current core system status")
@@ -199,6 +237,7 @@ def run_terminal_repl(mode: str, orchestrator: Orchestrator, voice_pipeline: Opt
             print("  voice on / off           : Enable or disable voice capture")
             print("  voice mode <mode>        : Switch voice mode (text, push_to_talk, wake_word)")
             print("  listen                   : Trigger a push-to-talk voice recording turn")
+            print("  key <api_key>            : Set Groq Cloud API key and activate online mode")
             print("  mode <name>              : Switch operating mode (normal, coding, study, research, professional, emergency)")
             print("  trait <name> <0.0-1.0>   : Adjust a personality trait (e.g. trait humor 0.8)")
             print("  reset                    : Reset the current conversation history")
@@ -241,6 +280,9 @@ def main(args: Optional[List[str]] = None) -> int:
             settings.voice.mode = parsed_args.voice_mode
             if parsed_args.voice_mode != "text":
                 settings.voice.enabled = True
+
+        if parsed_args.groq_key:
+            settings.model.api_key = parsed_args.groq_key
 
         # Ensure filesystem directories exist
         settings.ensure_directories()

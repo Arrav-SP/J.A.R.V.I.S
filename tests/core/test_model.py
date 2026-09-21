@@ -13,6 +13,9 @@ from app.core.exceptions import (
 )
 from app.core.model import (
     ChatMessage,
+    GeminiProvider,
+    GroqProvider,
+    HybridLLMProvider,
     MockLLMProvider,
     OllamaProvider,
     get_model_provider,
@@ -119,3 +122,80 @@ def test_get_model_provider_ollama_fallback() -> None:
     provider = get_model_provider(config)
     assert isinstance(provider, MockLLMProvider)
     assert "offline-fallback" in provider.model_name
+
+
+def test_mock_provider_name_introduction_and_recall() -> None:
+    """Verify mock provider learns name on introduction and recalls it."""
+    provider = MockLLMProvider()
+    intro_resp = provider.generate([ChatMessage(role="user", content="My name is Aarav")])
+    assert "Aarav" in intro_resp.content
+
+    recall_resp = provider.generate([
+        ChatMessage(role="user", content="My name is Aarav"),
+        ChatMessage(role="assistant", content="Pleasure to formally make your acquaintance, Aarav."),
+        ChatMessage(role="user", content="What is my name?"),
+    ])
+    assert "Aarav" in recall_resp.content
+
+
+def test_mock_provider_regression_explanation() -> None:
+    """Verify mock provider explains regression."""
+    provider = MockLLMProvider()
+    resp = provider.generate([ChatMessage(role="user", content="Explain regression")])
+    assert "regression" in resp.content.lower()
+
+
+def test_groq_provider_missing_key() -> None:
+    """Verify GroqProvider raises ModelUnavailableError when API key is missing."""
+    provider = GroqProvider(api_key=None)
+    assert provider.is_available() is False
+    with pytest.raises(ModelUnavailableError):
+        provider.generate([ChatMessage(role="user", content="Hello")])
+
+
+def test_groq_provider_success() -> None:
+    """Verify GroqProvider formats payload and parses completion response."""
+    provider = GroqProvider(api_key="gsk_testkey123")
+    assert provider.is_available() is True
+
+    fake_response = MagicMock()
+    fake_response.read.return_value = (
+        b'{"choices": [{"message": {"content": "Hello, I am JARVIS powered by Groq."}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 10, "completion_tokens": 8}}'
+    )
+    fake_response.__enter__.return_value = fake_response
+
+    with patch("urllib.request.urlopen", return_value=fake_response):
+        resp = provider.generate([ChatMessage(role="user", content="Hello")])
+        assert "JARVIS powered by Groq" in resp.content
+        assert resp.model_name == "openai/gpt-oss-120b"
+
+
+def test_gemini_provider_success() -> None:
+    """Verify GeminiProvider formats payload and parses response."""
+    provider = GeminiProvider(api_key="ai_testkey456")
+    assert provider.is_available() is True
+
+    fake_response = MagicMock()
+    fake_response.read.return_value = (
+        b'{"candidates": [{"content": {"parts": [{"text": "Greetings from Gemini."}]}}]}'
+    )
+    fake_response.__enter__.return_value = fake_response
+
+    with patch("urllib.request.urlopen", return_value=fake_response):
+        resp = provider.generate([ChatMessage(role="user", content="Hello")])
+        assert "Greetings from Gemini." in resp.content
+
+
+def test_hybrid_provider_fallback_to_offline() -> None:
+    """Verify HybridLLMProvider switches to offline mode when cloud API fails."""
+    online = GroqProvider(api_key="gsk_test")
+    offline = MockLLMProvider(model_name="mock-offline")
+    hybrid = HybridLLMProvider(online_provider=online, offline_provider=offline)
+
+    # Simulate network down on online provider
+    with patch.object(online, "generate", side_effect=ModelUnavailableError("Internet down")):
+        resp = hybrid.generate([ChatMessage(role="user", content="Explain recursion")])
+        assert "Internet connection not detected" in resp.content
+        assert "offline" in resp.model_name
+        assert "recursion" in resp.content.lower()
+

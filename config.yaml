@@ -23,11 +23,15 @@ personality:
   response_style: "concise"
 
 model:
-  provider: "mock" # Options: "mock", "ollama"
-  model_name: "llama3.2"
+  provider: "hybrid" # Options: "hybrid", "groq", "gemini", "ollama", "mock"
+  model_name: "openai/gpt-oss-120b"
+  groq_model: "openai/gpt-oss-120b"
+  gemini_model: "gemini-1.5-flash"
+  offline_provider: "ollama"
+  offline_model: "llama3.2"
   base_url: "http://localhost:11434"
   temperature: 0.7
-  timeout_seconds: 30.0
+  timeout_seconds: 15.0
   max_context_messages: 20
   fallback_to_mock: true
 
@@ -57,14 +61,15 @@ voice:
     output_device: null
   stt:
     provider: "faster-whisper" # Options: "faster-whisper", "mock"
-    model: "tiny.en"
+    model: "base.en"
     device: "cpu" # "cpu", "cuda", "auto"
     compute_type: "int8"
+    initial_prompt: "Arav, Aarav, Vellore, Tamil Nadu, forecast, weather, JARVIS, programming, recursion, regression"
     fallback_to_mock: true
   tts:
     provider: "sapi5" # Options: "sapi5", "mock"
     voice: "Microsoft David Desktop"
-    speed: 1.0
+    speed: 1.25
     fallback_to_mock: true
   vad:
     enabled: true
