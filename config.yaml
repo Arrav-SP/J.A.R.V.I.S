@@ -45,3 +45,34 @@ paths:
   logs_dir: "data/logs"
   memory_dir: "data/memory"
   documents_dir: "data/documents"
+
+voice:
+  enabled: false
+  mode: "wake_word" # Options: "text", "push_to_talk", "wake_word"
+  sample_rate: 16000
+  channels: 1
+  chunk_duration_ms: 30
+  audio:
+    input_device: null
+    output_device: null
+  stt:
+    provider: "faster-whisper" # Options: "faster-whisper", "mock"
+    model: "tiny.en"
+    device: "cpu" # "cpu", "cuda", "auto"
+    compute_type: "int8"
+    fallback_to_mock: true
+  tts:
+    provider: "sapi5" # Options: "sapi5", "mock"
+    voice: "Microsoft David Desktop"
+    speed: 1.0
+    fallback_to_mock: true
+  vad:
+    enabled: true
+    provider: "energy" # Options: "energy", "mock"
+    threshold: 0.02
+    silence_duration_ms: 800
+  wake_word:
+    provider: "keyword" # Options: "keyword", "mock"
+    phrase: "jarvis"
+    threshold: 0.5
+

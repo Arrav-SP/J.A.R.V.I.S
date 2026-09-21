@@ -146,6 +146,73 @@ class PersonalityConfig(BaseModel):
         return v_clean
 
 
+class AudioDeviceConfig(BaseModel):
+    """Audio input/output hardware device selection."""
+
+    input_device: Optional[int | str] = None
+    output_device: Optional[int | str] = None
+
+
+class STTConfig(BaseModel):
+    """Speech-to-text configuration."""
+
+    provider: str = Field(default="faster-whisper", description="STT provider: 'faster-whisper' or 'mock'")
+    model: str = Field(default="tiny.en", description="Whisper model: tiny.en, base.en, small.en, etc.")
+    device: str = Field(default="cpu", description="Inference device: cpu, cuda, auto")
+    compute_type: str = Field(default="int8", description="Quantization: int8, float16, float32")
+    fallback_to_mock: bool = True
+
+
+class TTSConfig(BaseModel):
+    """Text-to-speech configuration."""
+
+    provider: str = Field(default="sapi5", description="TTS provider: 'sapi5', 'edge-tts', or 'mock'")
+    voice: str = Field(default="Microsoft David Desktop", description="Voice identifier or name")
+    speed: float = Field(default=1.0, ge=0.5, le=2.0)
+    fallback_to_mock: bool = True
+
+
+class VADConfig(BaseModel):
+    """Voice activity detection configuration."""
+
+    enabled: bool = True
+    provider: str = Field(default="energy", description="VAD provider: 'energy', 'silero', or 'mock'")
+    threshold: float = Field(default=0.02, ge=0.0, le=1.0)
+    silence_duration_ms: int = Field(default=800, ge=100, le=5000)
+
+
+class WakeWordConfig(BaseModel):
+    """Wake-word detection configuration."""
+
+    provider: str = Field(default="keyword", description="Wake word engine: 'openwakeword', 'keyword', or 'mock'")
+    phrase: str = Field(default="jarvis", description="Wake phrase")
+    threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class VoiceConfig(BaseModel):
+    """Voice subsystem configuration."""
+
+    enabled: bool = False
+    mode: str = Field(default="wake_word", description="Voice mode: text, push_to_talk, wake_word")
+    sample_rate: int = Field(default=16000, description="Audio sample rate (Hz)")
+    channels: int = Field(default=1, description="Number of audio channels (1=mono)")
+    chunk_duration_ms: int = Field(default=30, description="Chunk size in milliseconds")
+    audio: AudioDeviceConfig = Field(default_factory=AudioDeviceConfig)
+    stt: STTConfig = Field(default_factory=STTConfig)
+    tts: TTSConfig = Field(default_factory=TTSConfig)
+    vad: VADConfig = Field(default_factory=VADConfig)
+    wake_word: WakeWordConfig = Field(default_factory=WakeWordConfig)
+
+    @field_validator("mode")
+    @classmethod
+    def validate_mode(cls, v: str) -> str:
+        valid_modes = {"text", "push_to_talk", "wake_word"}
+        clean = v.strip().lower()
+        if clean not in valid_modes:
+            raise ValueError(f"Invalid voice mode '{v}'. Allowed: {', '.join(sorted(valid_modes))}")
+        return clean
+
+
 class Settings(BaseModel):
     """Complete application settings."""
 
@@ -154,6 +221,7 @@ class Settings(BaseModel):
     paths: PathsConfig = Field(default_factory=PathsConfig)
     model: ModelConfig = Field(default_factory=ModelConfig)
     personality: PersonalityConfig = Field(default_factory=PersonalityConfig)
+    voice: VoiceConfig = Field(default_factory=VoiceConfig)
 
     def ensure_directories(self) -> None:
         """Convenience method to ensure configured directories exist."""
@@ -263,6 +331,51 @@ def load_settings(
             except ValueError as err:
                 raise ConfigurationError(f"Invalid float value in {env_key}: {err}") from err
 
+    # Voice section
+    voice_data = raw_config.get("voice", {})
+    if not isinstance(voice_data, dict):
+        voice_data = {}
+
+    if "JARVIS_VOICE_ENABLED" in os.environ:
+        voice_data["enabled"] = os.environ["JARVIS_VOICE_ENABLED"].strip().lower() in {"true", "1", "yes"}
+    if "JARVIS_VOICE_MODE" in os.environ:
+        voice_data["mode"] = os.environ["JARVIS_VOICE_MODE"]
+
+    stt_data = voice_data.get("stt", {})
+    if "JARVIS_VOICE_STT_PROVIDER" in os.environ:
+        stt_data["provider"] = os.environ["JARVIS_VOICE_STT_PROVIDER"]
+    if "JARVIS_VOICE_STT_MODEL" in os.environ:
+        stt_data["model"] = os.environ["JARVIS_VOICE_STT_MODEL"]
+    if "JARVIS_VOICE_STT_DEVICE" in os.environ:
+        stt_data["device"] = os.environ["JARVIS_VOICE_STT_DEVICE"]
+    voice_data["stt"] = stt_data
+
+    tts_data = voice_data.get("tts", {})
+    if "JARVIS_VOICE_TTS_PROVIDER" in os.environ:
+        tts_data["provider"] = os.environ["JARVIS_VOICE_TTS_PROVIDER"]
+    if "JARVIS_VOICE_TTS_VOICE" in os.environ:
+        tts_data["voice"] = os.environ["JARVIS_VOICE_TTS_VOICE"]
+    if "JARVIS_VOICE_TTS_SPEED" in os.environ:
+        try:
+            tts_data["speed"] = float(os.environ["JARVIS_VOICE_TTS_SPEED"])
+        except ValueError as err:
+            raise ConfigurationError(f"Invalid float in JARVIS_VOICE_TTS_SPEED: {err}") from err
+    voice_data["tts"] = tts_data
+
+    vad_data = voice_data.get("vad", {})
+    if "JARVIS_VOICE_VAD_ENABLED" in os.environ:
+        vad_data["enabled"] = os.environ["JARVIS_VOICE_VAD_ENABLED"].strip().lower() in {"true", "1", "yes"}
+    if "JARVIS_VOICE_VAD_PROVIDER" in os.environ:
+        vad_data["provider"] = os.environ["JARVIS_VOICE_VAD_PROVIDER"]
+    voice_data["vad"] = vad_data
+
+    wake_word_data = voice_data.get("wake_word", {})
+    if "JARVIS_VOICE_WAKE_WORD_PROVIDER" in os.environ:
+        wake_word_data["provider"] = os.environ["JARVIS_VOICE_WAKE_WORD_PROVIDER"]
+    if "JARVIS_VOICE_WAKE_WORD_PHRASE" in os.environ:
+        wake_word_data["phrase"] = os.environ["JARVIS_VOICE_WAKE_WORD_PHRASE"]
+    voice_data["wake_word"] = wake_word_data
+
     paths_data["base_dir"] = root_dir
 
     # Instantiate and validate models
@@ -272,12 +385,14 @@ def load_settings(
         paths_cfg = PathsConfig(**paths_data)
         model_cfg = ModelConfig(**model_data)
         personality_cfg = PersonalityConfig(**personality_data)
+        voice_cfg = VoiceConfig(**voice_data)
         settings_instance = Settings(
             system=system_cfg,
             logging=logging_cfg,
             paths=paths_cfg,
             model=model_cfg,
             personality=personality_cfg,
+            voice=voice_cfg,
         )
     except Exception as err:
         raise ConfigurationError(f"Configuration validation error: {err}") from err

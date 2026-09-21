@@ -52,13 +52,25 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         default=None,
         help="Override operational mode (e.g. terminal).",
     )
+    parser.add_argument(
+        "--voice",
+        action="store_true",
+        help="Enable the JARVIS voice subsystem.",
+    )
+    parser.add_argument(
+        "--voice-mode",
+        type=str,
+        choices=["text", "push_to_talk", "wake_word"],
+        default=None,
+        help="Set voice operational mode (text, push_to_talk, wake_word).",
+    )
     return parser.parse_args(args)
 
 
-def run_terminal_repl(mode: str, orchestrator: Orchestrator) -> int:
+def run_terminal_repl(mode: str, orchestrator: Orchestrator, voice_pipeline: Optional[Any] = None) -> int:
     """Run the interactive terminal conversation loop."""
     print("JARVIS Core is ready in terminal mode.")
-    print("Commands: 'status', 'personality', 'mode <name>', 'reset', 'help', 'clear', 'exit' / 'quit'\n")
+    print("Commands: 'status', 'personality', 'voice', 'listen', 'mode <name>', 'reset', 'help', 'clear', 'exit' / 'quit'\n")
 
     logger = get_logger("terminal")
     while True:
@@ -112,10 +124,81 @@ def run_terminal_repl(mode: str, orchestrator: Orchestrator) -> int:
                     print(f"[JARVIS Error] Invalid trait value: {err}\n")
             else:
                 print("Usage: trait <name> <value (0.0 - 1.0)>\n")
+        elif cmd == "voice" or cmd.startswith("voice "):
+            if cmd == "voice":
+                if not voice_pipeline:
+                    print("[JARVIS] Voice subsystem is currently disabled in configuration.\n")
+                else:
+                    v_stat = voice_pipeline.get_status()
+                    print("\n" + "=" * 50)
+                    print("JARVIS VOICE PIPELINE STATUS")
+                    print(f"Enabled      : {v_stat['enabled']}")
+                    print(f"Mode         : {v_stat['mode']}")
+                    print(f"State        : {v_stat['state']}")
+                    print(f"STT Provider : {v_stat['stt_provider']}")
+                    print(f"TTS Provider : {v_stat['tts_provider']}")
+                    if v_stat.get("last_telemetry"):
+                        telem = v_stat["last_telemetry"]
+                        print(f"Last Turn    : Speech={telem.get('speech_duration_s', 0):.2f}s | STT={telem.get('stt_latency_ms', 0):.1f}ms | LLM={telem.get('llm_latency_ms', 0):.1f}ms | Total={telem.get('total_latency_ms', 0):.1f}ms")
+                    print("=" * 50 + "\n")
+            elif cmd == "voice on":
+                if not voice_pipeline:
+                    try:
+                        from app.voice import VoicePipeline
+
+                        settings = orchestrator.settings
+                        settings.voice.enabled = True
+                        voice_pipeline = VoicePipeline(config=settings.voice, orchestrator=orchestrator)
+                    except Exception as err:
+                        print(f"[JARVIS Error] Could not initialize voice pipeline: {err}\n")
+                        continue
+                voice_pipeline.config.enabled = True
+                voice_pipeline.start()
+                print(f"[JARVIS] Voice pipeline enabled in '{voice_pipeline.config.mode}' mode.\n")
+            elif cmd == "voice off":
+                if voice_pipeline:
+                    voice_pipeline.stop()
+                    voice_pipeline.config.enabled = False
+                print("[JARVIS] Voice pipeline disabled.\n")
+            elif cmd.startswith("voice mode "):
+                new_vmode = cmd.removeprefix("voice mode ").strip()
+                if new_vmode in {"text", "push_to_talk", "wake_word"}:
+                    if not voice_pipeline:
+                        try:
+                            from app.voice import VoicePipeline
+
+                            settings = orchestrator.settings
+                            settings.voice.enabled = (new_vmode != "text")
+                            settings.voice.mode = new_vmode
+                            voice_pipeline = VoicePipeline(config=settings.voice, orchestrator=orchestrator)
+                        except Exception as err:
+                            print(f"[JARVIS Error] Could not initialize voice pipeline: {err}\n")
+                            continue
+                    else:
+                        voice_pipeline.stop()
+                        voice_pipeline.config.mode = new_vmode
+                        if new_vmode != "text":
+                            voice_pipeline.config.enabled = True
+                            voice_pipeline.start()
+                        else:
+                            voice_pipeline.config.enabled = False
+                    print(f"[JARVIS] Voice mode switched to '{new_vmode}'.\n")
+                else:
+                    print(f"[JARVIS Error] Invalid voice mode '{new_vmode}'. Allowed: text, push_to_talk, wake_word\n")
+        elif cmd == "listen":
+            if voice_pipeline and voice_pipeline.config.enabled:
+                print("[JARVIS] Listening... (speak now)\n")
+                voice_pipeline.trigger_push_to_talk()
+            else:
+                print("[JARVIS] Voice pipeline is not active. Enable with 'voice on' or run with --voice.\n")
         elif cmd == "help":
             print("JARVIS Terminal Mode Commands:")
             print("  status                   : Display current core system status")
             print("  personality              : Display active personality profile and traits")
+            print("  voice                    : Show voice pipeline status and telemetry")
+            print("  voice on / off           : Enable or disable voice capture")
+            print("  voice mode <mode>        : Switch voice mode (text, push_to_talk, wake_word)")
+            print("  listen                   : Trigger a push-to-talk voice recording turn")
             print("  mode <name>              : Switch operating mode (normal, coding, study, research, professional, emergency)")
             print("  trait <name> <0.0-1.0>   : Adjust a personality trait (e.g. trait humor 0.8)")
             print("  reset                    : Reset the current conversation history")
@@ -128,6 +211,9 @@ def run_terminal_repl(mode: str, orchestrator: Orchestrator) -> int:
             response = orchestrator.process_message(prompt_input)
             print(f"\nJARVIS: {response}\n")
             logger.debug("Dialogue turn completed.")
+
+    if voice_pipeline:
+        voice_pipeline.stop()
 
     print(get_shutdown_banner())
     logger.info("JARVIS Core shut down cleanly.")
@@ -148,6 +234,14 @@ def main(args: Optional[List[str]] = None) -> int:
         if parsed_args.mode:
             settings.system.mode = parsed_args.mode
 
+        if parsed_args.voice:
+            settings.voice.enabled = True
+
+        if parsed_args.voice_mode:
+            settings.voice.mode = parsed_args.voice_mode
+            if parsed_args.voice_mode != "text":
+                settings.voice.enabled = True
+
         # Ensure filesystem directories exist
         settings.ensure_directories()
 
@@ -161,18 +255,21 @@ def main(args: Optional[List[str]] = None) -> int:
             logger = get_logger("core")
             logger.info("Status flag query executed.")
             print(get_status_text(mode=mode, status="ready"))
+            voice_status_str = f"Voice: {'enabled' if settings.voice.enabled else 'disabled'} (mode={settings.voice.mode}, stt={settings.voice.stt.provider}, tts={settings.voice.tts.provider})"
+            print(voice_status_str)
             return 0
 
         # Initialize full logging
         setup_logging(settings.logging, settings.paths.base_dir)
         logger = get_logger("core")
         logger.info(
-            "JARVIS Core initialized (name=%s, version=%s, env=%s, mode=%s, model_provider=%s)",
+            "JARVIS Core initialized (name=%s, version=%s, env=%s, mode=%s, model_provider=%s, voice=%s)",
             settings.system.name,
             settings.system.version,
             settings.system.environment,
             settings.system.mode,
             settings.model.provider,
+            "enabled" if settings.voice.enabled else "disabled",
         )
 
         if parsed_args.check:
@@ -185,8 +282,20 @@ def main(args: Optional[List[str]] = None) -> int:
         # Initialize Orchestrator
         orchestrator = Orchestrator(settings=settings)
 
+        # Initialize Voice Pipeline only if enabled
+        voice_pipeline = None
+        if settings.voice.enabled:
+            try:
+                from app.voice import VoicePipeline
+
+                voice_pipeline = VoicePipeline(config=settings.voice, orchestrator=orchestrator)
+                if settings.voice.mode != "text":
+                    voice_pipeline.start()
+            except Exception as v_err:
+                logger.warning("Voice pipeline could not be initialized: %s", v_err)
+
         # Run terminal conversation REPL
-        return run_terminal_repl(mode, orchestrator)
+        return run_terminal_repl(mode, orchestrator, voice_pipeline=voice_pipeline)
 
     except ConfigurationError as err:
         sys.stderr.write(f"Configuration error: {err}\n")
@@ -198,3 +307,4 @@ def main(args: Optional[List[str]] = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
