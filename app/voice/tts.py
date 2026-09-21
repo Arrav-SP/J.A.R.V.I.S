@@ -81,8 +81,18 @@ def _clean_text_for_sapi(text: str) -> str:
     t = re.sub(r"^\s*[-*+>]\s*", "", t, flags=re.MULTILINE)
     # Strip emojis and astral unicode symbols
     t = re.sub(r"[\U00010000-\U0010ffff]", "", t)
-    # Normalize special unicode spaces and symbols
-    t = t.replace("\u202f", " ").replace("\u00a0", " ").replace("≈", "approximately ")
+    # Normalize special unicode spaces, quotes, dashes, and symbols
+    t = (
+        t.replace("\u202f", " ")
+        .replace("\u00a0", " ")
+        .replace("≈", "approximately ")
+        .replace("’", "'")
+        .replace("‘", "'")
+        .replace("“", '"')
+        .replace("”", '"')
+        .replace("—", ", ")
+        .replace("–", "-")
+    )
     # Apply phonetic overrides for proper nouns
     for pattern, replacement in _SAPI_PRONUNCIATION_OVERRIDES.items():
         t = re.sub(pattern, replacement, t, flags=re.IGNORECASE)
@@ -185,6 +195,9 @@ class WindowsSapiTTSProvider(BaseTTSProvider):
 
     def stop(self) -> None:
         """Interrupt and purge speech output immediately."""
+        if not self._is_speaking:
+            return
+
         try:
             import win32com.client
             import pythoncom
@@ -193,10 +206,10 @@ class WindowsSapiTTSProvider(BaseTTSProvider):
             speaker = win32com.client.Dispatch("SAPI.SpVoice")
             # Flag 2 = SVSFPurgeBeforeSpeak with empty string cancels immediately
             speaker.Speak("", 2)
-            self._is_speaking = False
             logger.debug("SAPI speech output purged.")
-        except Exception as err:
-            logger.debug("Error stopping SAPI speech: %s", err)
+        except Exception:
+            pass
+        finally:
             self._is_speaking = False
 
     def is_speaking(self) -> bool:

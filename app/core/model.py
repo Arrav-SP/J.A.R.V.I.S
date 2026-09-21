@@ -104,6 +104,21 @@ class MockLLMProvider(BaseLLMProvider):
         is_professional = "OPERATING MODE: PROFESSIONAL" in system_content
         is_research = "OPERATING MODE: RESEARCH" in system_content
 
+        # Real-time tool telemetry handling for mock provider
+        if "[REAL-TIME WEATHER TELEMETRY" in system_content:
+            telemetry_part = system_content.split("[REAL-TIME WEATHER TELEMETRY")[1].split("]")[1]
+            telemetry_text = telemetry_part.split("Use this live factual")[0].strip(":\n ")
+            return ModelResponse(
+                content=f"{telemetry_text}, sir.",
+                model_name=self.model_name,
+            )
+        if "[REAL-TIME LIVE WEB SEARCH FINDINGS" in system_content:
+            findings_part = system_content.split("[REAL-TIME LIVE WEB SEARCH FINDINGS]")[1].split("Synthesize a concise")[0].strip(":\n ")
+            return ModelResponse(
+                content=f"According to live search findings, sir:\n{findings_part}",
+                model_name=self.model_name,
+            )
+
         # Context-aware query recall: "what did i just ask you?"
         if any(phrase in lower_msg for phrase in ["what did i just ask", "what was my last question", "what did i ask"]):
             if len(user_messages) >= 2:
@@ -384,6 +399,35 @@ class GroqProvider(BaseLLMProvider):
                 logger.warning("Groq model '%s' not found on server. Falling back to 'openai/gpt-oss-120b'.", self.model_name)
                 self.model_name = "openai/gpt-oss-120b"
                 return self.generate(messages, **kwargs)
+
+            # If model attempted internal tool invocation without declared schema, retry with direct prose on fallback model
+            if err.code == 400 and "tool_use_failed" in err_body:
+                logger.info("Model attempted tool invocation. Retrying with direct prose instruction on Groq fallback.")
+                retry_msgs = list(messages)
+                retry_instruction = "\n\nProvide direct, natural conversational prose. Do not invoke tool syntax or function calling."
+                if retry_msgs and retry_msgs[0].role == "system":
+                    retry_msgs[0] = ChatMessage(role="system", content=retry_msgs[0].content + retry_instruction)
+                else:
+                    retry_msgs.insert(0, ChatMessage(role="system", content=retry_instruction.strip()))
+                payload["messages"] = [m.to_dict() for m in retry_msgs]
+                payload["model"] = "qwen/qwen3.8-27b"
+                retry_req = urllib.request.Request(
+                    url,
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers=req.headers,
+                    method="POST",
+                )
+                try:
+                    with urllib.request.urlopen(retry_req, timeout=self.timeout_seconds) as r_resp:
+                        r_data = json.loads(r_resp.read().decode("utf-8"))
+                        r_choice = r_data.get("choices", [{}])[0]
+                        return ModelResponse(
+                            content=r_choice.get("message", {}).get("content", ""),
+                            model_name="qwen/qwen3.8-27b",
+                        )
+                except Exception as r_err:
+                    logger.warning("Tool-use retry also failed: %s", r_err)
+
             logger.error("Groq API HTTP %d: %s", err.code, err_body)
             raise ModelError(f"Groq API error {err.code}: {err.reason} ({err_body})") from err
         except urllib.error.URLError as err:
