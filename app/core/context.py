@@ -5,7 +5,7 @@ Manages system instructions, personality baseline, and conversation context wind
 
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 from app.core.model import ChatMessage
 
@@ -31,16 +31,17 @@ class ContextManager:
         """Retrieve the current system prompt."""
         return self.system_prompt
 
-    def build_context(self, history: List[ChatMessage]) -> List[ChatMessage]:
+    def build_context(self, history: List[ChatMessage], system_prompt: Optional[str] = None) -> List[ChatMessage]:
         """Construct the complete message payload for the LLM.
 
         Prepends the system prompt and applies sliding-window message truncation.
         """
+        active_prompt = system_prompt or self.system_prompt
         # Apply sliding window truncation to history if it exceeds the limit
         truncated_history = history[-self.max_context_messages:] if len(history) > self.max_context_messages else history
 
         messages: List[ChatMessage] = [
-            ChatMessage(role="system", content=self.system_prompt),
+            ChatMessage(role="system", content=active_prompt),
         ]
         messages.extend(truncated_history)
         return messages

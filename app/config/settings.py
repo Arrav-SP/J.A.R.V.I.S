@@ -121,6 +121,31 @@ class ModelConfig(BaseModel):
         return v_clean
 
 
+class PersonalityConfig(BaseModel):
+    """Personality and behavioral configuration."""
+
+    name: str = "JARVIS"
+    mode: str = Field(default="normal", description="Operating mode: normal, coding, study, research, professional, emergency")
+    humor: float = Field(default=0.6, ge=0.0, le=1.0)
+    sarcasm: float = Field(default=0.4, ge=0.0, le=1.0)
+    formality: float = Field(default=0.7, ge=0.0, le=1.0)
+    warmth: float = Field(default=0.6, ge=0.0, le=1.0)
+    verbosity: float = Field(default=0.4, ge=0.0, le=1.0)
+    confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+    proactivity: float = Field(default=0.5, ge=0.0, le=1.0)
+    preferred_address: str = "sir"
+    response_style: str = "concise"
+
+    @field_validator("mode")
+    @classmethod
+    def validate_mode(cls, v: str) -> str:
+        valid_modes = {"normal", "coding", "study", "research", "professional", "emergency"}
+        v_clean = v.strip().lower()
+        if v_clean not in valid_modes:
+            raise ValueError(f"Invalid personality mode '{v}'. Allowed: {', '.join(sorted(valid_modes))}")
+        return v_clean
+
+
 class Settings(BaseModel):
     """Complete application settings."""
 
@@ -128,6 +153,7 @@ class Settings(BaseModel):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
     model: ModelConfig = Field(default_factory=ModelConfig)
+    personality: PersonalityConfig = Field(default_factory=PersonalityConfig)
 
     def ensure_directories(self) -> None:
         """Convenience method to ensure configured directories exist."""
@@ -193,6 +219,7 @@ def load_settings(
     logging_data = raw_config.get("logging", {})
     paths_data = raw_config.get("paths", {})
     model_data = raw_config.get("model", {})
+    personality_data = raw_config.get("personality", {})
 
     # Apply environment variable overrides
     if "JARVIS_ENV" in os.environ:
@@ -220,6 +247,22 @@ def load_settings(
         fallback_val = os.environ["JARVIS_MODEL_FALLBACK"].strip().lower()
         model_data["fallback_to_mock"] = fallback_val in {"true", "1", "yes"}
 
+    # Personality environment overrides
+    if "JARVIS_PERSONALITY_MODE" in os.environ:
+        personality_data["mode"] = os.environ["JARVIS_PERSONALITY_MODE"]
+    if "JARVIS_PERSONALITY_ADDRESS" in os.environ:
+        personality_data["preferred_address"] = os.environ["JARVIS_PERSONALITY_ADDRESS"]
+    if "JARVIS_PERSONALITY_STYLE" in os.environ:
+        personality_data["response_style"] = os.environ["JARVIS_PERSONALITY_STYLE"]
+
+    for trait in ["humor", "sarcasm", "formality", "warmth", "verbosity", "confidence", "proactivity"]:
+        env_key = f"JARVIS_PERSONALITY_{trait.upper()}"
+        if env_key in os.environ:
+            try:
+                personality_data[trait] = float(os.environ[env_key])
+            except ValueError as err:
+                raise ConfigurationError(f"Invalid float value in {env_key}: {err}") from err
+
     paths_data["base_dir"] = root_dir
 
     # Instantiate and validate models
@@ -228,11 +271,13 @@ def load_settings(
         logging_cfg = LoggingConfig(**logging_data)
         paths_cfg = PathsConfig(**paths_data)
         model_cfg = ModelConfig(**model_data)
+        personality_cfg = PersonalityConfig(**personality_data)
         settings_instance = Settings(
             system=system_cfg,
             logging=logging_cfg,
             paths=paths_cfg,
             model=model_cfg,
+            personality=personality_cfg,
         )
     except Exception as err:
         raise ConfigurationError(f"Configuration validation error: {err}") from err

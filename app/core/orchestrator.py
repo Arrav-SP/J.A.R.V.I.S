@@ -6,7 +6,7 @@ User text -> Session -> ContextManager -> ModelRouter -> ModelResponse -> Sessio
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from app.core.context import ContextManager
 from app.core.exceptions import (
@@ -19,6 +19,9 @@ from app.core.model import ChatMessage
 from app.core.router import ModelRouter
 from app.core.session import Session, SessionManager
 
+from app.personality.manager import PersonalityManager
+from app.personality.models import OperatingMode
+
 if TYPE_CHECKING:
     from app.config.settings import Settings
 
@@ -26,7 +29,7 @@ logger = get_logger("orchestrator")
 
 
 class Orchestrator:
-    """Coordinates conversation sessions, context assembly, and model invocation."""
+    """Coordinates conversation sessions, context assembly, personality, and model invocation."""
 
     def __init__(self, settings: Optional[Settings] = None) -> None:
         if settings is None:
@@ -34,15 +37,17 @@ class Orchestrator:
 
             settings = get_settings()
         self.settings = settings
+        self.personality_manager = PersonalityManager(self.settings.personality)
         self.session_manager = SessionManager()
         self.context_manager = ContextManager(
             max_context_messages=self.settings.model.max_context_messages,
         )
         self.router = ModelRouter(self.settings.model)
         logger.info(
-            "JARVIS Orchestrator initialized (provider=%s, model=%s)",
+            "JARVIS Orchestrator initialized (provider=%s, model=%s, mode=%s)",
             self.settings.model.provider,
             self.settings.model.model_name,
+            self.personality_manager.get_mode().value,
         )
 
     def process_message(self, user_text: str, session_id: str = "terminal-default") -> str:
@@ -62,9 +67,11 @@ class Orchestrator:
         session.add_user_message(clean_text)
         logger.debug("Received input in session '%s': %s", session_id, clean_text)
 
-        # 3. Assemble prompt context from history
+        # 3. Assemble prompt context from history using active personality prompt
+        system_instructions = self.personality_manager.get_system_instructions()
         context_messages: List[ChatMessage] = self.context_manager.build_context(
             session.get_history(),
+            system_prompt=system_instructions,
         )
 
         # 4. Resolve model provider from router
@@ -100,6 +107,24 @@ class Orchestrator:
         logger.debug("Generated response for session '%s': %s", session_id, assistant_text)
 
         return assistant_text
+
+    def set_mode(self, mode: OperatingMode | str) -> str:
+        """Switch operating mode at runtime."""
+        profile = self.personality_manager.set_mode(mode)
+        return f"Operating mode switched to {profile.name.upper()}."
+
+    def get_mode(self) -> str:
+        """Return the current operating mode name."""
+        return self.personality_manager.get_mode().value
+
+    def set_trait(self, trait_name: str, value: Any) -> str:
+        """Update a specific personality trait at runtime."""
+        self.personality_manager.set_trait(trait_name, value)
+        return f"Personality trait '{trait_name}' updated to {value}."
+
+    def get_personality_status(self) -> Dict[str, Any]:
+        """Retrieve a structured summary of active personality settings."""
+        return self.personality_manager.get_status()
 
     def reset_session(self, session_id: str = "terminal-default") -> None:
         """Clear conversation history for the specified session."""

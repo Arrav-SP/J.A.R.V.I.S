@@ -95,6 +95,14 @@ class MockLLMProvider(BaseLLMProvider):
         latest_user_msg = user_messages[-1].content.strip()
         lower_msg = latest_user_msg.lower()
 
+        # Extract mode and address from system instructions
+        system_content = next((m.content for m in messages if m.role == "system"), "")
+        is_coding = "OPERATING MODE: CODING" in system_content
+        is_study = "OPERATING MODE: STUDY" in system_content
+        is_emergency = "OPERATING MODE: EMERGENCY" in system_content
+        is_professional = "OPERATING MODE: PROFESSIONAL" in system_content
+        is_research = "OPERATING MODE: RESEARCH" in system_content
+
         # Context-aware query recall: "what did i just ask you?"
         if any(phrase in lower_msg for phrase in ["what did i just ask", "what was my last question", "what did i ask"]):
             if len(user_messages) >= 2:
@@ -103,17 +111,51 @@ class MockLLMProvider(BaseLLMProvider):
             else:
                 response_text = "This is the first question in our current session, sir."
 
-        # Concept explanation test: recursion
+        # Concept explanation test: recursion (adapts style based on active mode)
         elif "recursion" in lower_msg:
-            response_text = (
-                "Recursion is a programming concept where a function calls itself directly or indirectly "
-                "to solve smaller instances of a problem. Every recursive function must define a base case "
-                "to terminate execution and prevent infinite stack overflow."
-            )
+            if is_coding:
+                response_text = (
+                    "```python\ndef recurse(n):\n    if n <= 0:\n        return\n    recurse(n - 1)\n```\n"
+                    "Recursion: function invokes itself until a base termination condition is satisfied."
+                )
+            elif is_study:
+                response_text = (
+                    "Let's break down recursion step-by-step! Imagine Russian nesting dolls: each doll contains "
+                    "a smaller one inside, until you reach the solid base doll that cannot be opened further. "
+                    "In code, a function solves a small piece of work and calls itself on the remainder until "
+                    "it reaches the base case. Shall we write a simple factorial together?"
+                )
+            elif is_emergency:
+                response_text = (
+                    "RECURSION: Function self-invocation. CRITICAL: Requires verified base condition to prevent stack overflow."
+                )
+            elif is_professional:
+                response_text = (
+                    "Recursion is an algorithmic paradigm in which a procedure invokes itself on successive "
+                    "subproblems, bounded by a designated base termination criterion."
+                )
+            elif is_research:
+                response_text = (
+                    "Recursion represents inductive computation. Formal analysis demonstrates recurrence relations "
+                    "yielding execution time T(n) and auxiliary stack frame allocation proportional to recursion depth."
+                )
+            else:
+                response_text = (
+                    "Recursion is a programming concept where a function calls itself directly or indirectly "
+                    "to solve smaller instances of a problem. Every recursive function must define a base case "
+                    "to terminate execution and prevent infinite stack overflow."
+                )
 
         # Greetings
         elif any(greeting in lower_msg for greeting in ["hello", "hi", "hey", "greetings"]):
-            response_text = "Hello. JARVIS systems are operational and ready."
+            if is_coding:
+                response_text = "JARVIS operational in CODING mode. Ready for code tasks."
+            elif is_study:
+                response_text = "Hello! JARVIS study assistant ready. What topic are we exploring today?"
+            elif is_emergency:
+                response_text = "JARVIS EMERGENCY MODE ACTIVE. State immediate priority."
+            else:
+                response_text = "Hello. JARVIS systems are operational and ready."
 
         # Status query
         elif "status" in lower_msg:
@@ -121,9 +163,14 @@ class MockLLMProvider(BaseLLMProvider):
 
         # Default conversational echo/reasoning
         else:
-            response_text = (
-                f"Understood: '{latest_user_msg}'. Processing this request through the JARVIS intelligence layer."
-            )
+            if is_coding:
+                response_text = f"[CODING] Task acknowledged: '{latest_user_msg}'."
+            elif is_emergency:
+                response_text = f"[EMERGENCY] Critical instruction: '{latest_user_msg}'."
+            else:
+                response_text = (
+                    f"Understood: '{latest_user_msg}'. Processing this request through the JARVIS intelligence layer."
+                )
 
         return ModelResponse(
             content=response_text,

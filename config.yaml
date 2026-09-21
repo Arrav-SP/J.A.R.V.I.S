@@ -9,6 +9,19 @@ system:
   mode: "terminal"
   debug: false
 
+personality:
+  name: "JARVIS"
+  mode: "normal" # Options: normal, coding, study, research, professional, emergency
+  humor: 0.6
+  sarcasm: 0.4
+  formality: 0.7
+  warmth: 0.6
+  verbosity: 0.4
+  confidence: 0.8
+  proactivity: 0.5
+  preferred_address: "sir"
+  response_style: "concise"
+
 model:
   provider: "mock" # Options: "mock", "ollama"
   model_name: "llama3.2"

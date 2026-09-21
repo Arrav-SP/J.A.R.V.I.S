@@ -58,7 +58,7 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
 def run_terminal_repl(mode: str, orchestrator: Orchestrator) -> int:
     """Run the interactive terminal conversation loop."""
     print("JARVIS Core is ready in terminal mode.")
-    print("Commands: 'status', 'reset', 'help', 'clear', 'exit' / 'quit'\n")
+    print("Commands: 'status', 'personality', 'mode <name>', 'reset', 'help', 'clear', 'exit' / 'quit'\n")
 
     logger = get_logger("terminal")
     while True:
@@ -79,13 +79,49 @@ def run_terminal_repl(mode: str, orchestrator: Orchestrator) -> int:
         elif cmd in {"reset", "new"}:
             orchestrator.reset_session()
             print("Conversation session reset, sir.\n")
+        elif cmd in {"personality", "persona"}:
+            status = orchestrator.get_personality_status()
+            traits = status["traits"]
+            print("\n" + "=" * 50)
+            print(f"JARVIS PERSONALITY PROFILE")
+            print(f"Active Mode       : {status['mode_name'].upper()}")
+            print(f"Description       : {status['mode_description']}")
+            print(f"Preferred Address : {traits['preferred_address']}")
+            print(f"Humor: {int(traits['humor']*100)}% | Sarcasm: {int(traits['sarcasm']*100)}% | Formality: {int(traits['formality']*100)}%")
+            print(f"Warmth: {int(traits['warmth']*100)}% | Verbosity: {int(traits['verbosity']*100)}% | Confidence: {int(traits['confidence']*100)}%")
+            print("=" * 50 + "\n")
+        elif cmd.startswith("mode ") or ("switch to " in cmd and " mode" in cmd):
+            if cmd.startswith("mode "):
+                target_mode = cmd.removeprefix("mode ").strip()
+            else:
+                target_mode = cmd.split("switch to ")[1].split(" mode")[0].strip()
+            try:
+                result_msg = orchestrator.set_mode(target_mode)
+                print(f"[JARVIS] {result_msg}\n")
+            except ValueError as err:
+                print(f"[JARVIS Error] {err}\n")
+        elif cmd.startswith("trait "):
+            parts = prompt_input.split()
+            if len(parts) == 3:
+                trait_name, trait_val = parts[1], parts[2]
+                try:
+                    val_float = float(trait_val)
+                    result_msg = orchestrator.set_trait(trait_name, val_float)
+                    print(f"[JARVIS] {result_msg}\n")
+                except ValueError as err:
+                    print(f"[JARVIS Error] Invalid trait value: {err}\n")
+            else:
+                print("Usage: trait <name> <value (0.0 - 1.0)>\n")
         elif cmd == "help":
             print("JARVIS Terminal Mode Commands:")
-            print("  status : Display current core system status")
-            print("  reset  : Reset the current conversation history")
-            print("  clear  : Clear terminal screen")
-            print("  help   : Show this help message")
-            print("  exit   : Shut down JARVIS Core\n")
+            print("  status                   : Display current core system status")
+            print("  personality              : Display active personality profile and traits")
+            print("  mode <name>              : Switch operating mode (normal, coding, study, research, professional, emergency)")
+            print("  trait <name> <0.0-1.0>   : Adjust a personality trait (e.g. trait humor 0.8)")
+            print("  reset                    : Reset the current conversation history")
+            print("  clear                    : Clear terminal screen")
+            print("  help                     : Show this help message")
+            print("  exit / quit              : Shut down JARVIS Core\n")
         elif cmd == "clear":
             print("\033[H\033[J", end="")
         else:
