@@ -1,5 +1,5 @@
 """Main entry point for running JARVIS via `python -m app`."""
-
+"""Main entry point for running JARVIS via `python -m app`."""
 from __future__ import annotations
 
 import argparse
