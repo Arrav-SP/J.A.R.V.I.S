@@ -222,6 +222,28 @@ class VoiceConfig(BaseModel):
         return clean
 
 
+class MemoryConfig(BaseModel):
+    """Memory subsystem configuration."""
+
+    enabled: bool = True
+    storage_path: str = "data/memory/jarvis_memory.db"
+    semantic_search: bool = True
+    max_short_term_messages: int = Field(default=20, gt=0)
+    max_retrieved_memories: int = Field(default=5, gt=0)
+    auto_memory: bool = True
+    default_importance: str = Field(default="normal", description="Default importance: low, normal, important, critical")
+    allow_neural_embeddings: bool = False
+
+    @field_validator("default_importance")
+    @classmethod
+    def validate_importance(cls, v: str) -> str:
+        valid = {"low", "normal", "important", "critical"}
+        clean = v.strip().lower()
+        if clean not in valid:
+            raise ValueError(f"Invalid memory importance '{v}'. Allowed: {', '.join(sorted(valid))}")
+        return clean
+
+
 class Settings(BaseModel):
     """Complete application settings."""
 
@@ -231,6 +253,7 @@ class Settings(BaseModel):
     model: ModelConfig = Field(default_factory=ModelConfig)
     personality: PersonalityConfig = Field(default_factory=PersonalityConfig)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
+    memory: MemoryConfig = Field(default_factory=MemoryConfig)
 
     def ensure_directories(self) -> None:
         """Convenience method to ensure configured directories exist."""
@@ -395,6 +418,25 @@ def load_settings(
         wake_word_data["phrase"] = os.environ["JARVIS_VOICE_WAKE_WORD_PHRASE"]
     voice_data["wake_word"] = wake_word_data
 
+    # Memory section
+    memory_data = raw_config.get("memory", {})
+    if not isinstance(memory_data, dict):
+        memory_data = {}
+
+    if "JARVIS_MEMORY_ENABLED" in os.environ:
+        memory_data["enabled"] = os.environ["JARVIS_MEMORY_ENABLED"].strip().lower() in {"true", "1", "yes"}
+    if "JARVIS_MEMORY_STORAGE_PATH" in os.environ:
+        memory_data["storage_path"] = os.environ["JARVIS_MEMORY_STORAGE_PATH"]
+    if "JARVIS_MEMORY_SEMANTIC_SEARCH" in os.environ:
+        memory_data["semantic_search"] = os.environ["JARVIS_MEMORY_SEMANTIC_SEARCH"].strip().lower() in {"true", "1", "yes"}
+    if "JARVIS_MEMORY_MAX_RETRIEVED" in os.environ:
+        try:
+            memory_data["max_retrieved_memories"] = int(os.environ["JARVIS_MEMORY_MAX_RETRIEVED"])
+        except ValueError as err:
+            raise ConfigurationError(f"Invalid integer in JARVIS_MEMORY_MAX_RETRIEVED: {err}") from err
+    if "JARVIS_MEMORY_AUTO" in os.environ:
+        memory_data["auto_memory"] = os.environ["JARVIS_MEMORY_AUTO"].strip().lower() in {"true", "1", "yes"}
+
     paths_data["base_dir"] = root_dir
 
     # Instantiate and validate models
@@ -405,6 +447,7 @@ def load_settings(
         model_cfg = ModelConfig(**model_data)
         personality_cfg = PersonalityConfig(**personality_data)
         voice_cfg = VoiceConfig(**voice_data)
+        memory_cfg = MemoryConfig(**memory_data)
         settings_instance = Settings(
             system=system_cfg,
             logging=logging_cfg,
@@ -412,6 +455,7 @@ def load_settings(
             model=model_cfg,
             personality=personality_cfg,
             voice=voice_cfg,
+            memory=memory_cfg,
         )
     except Exception as err:
         raise ConfigurationError(f"Configuration validation error: {err}") from err

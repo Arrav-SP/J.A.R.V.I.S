@@ -81,3 +81,12 @@ voice:
     phrase: "jarvis"
     threshold: 0.5
 
+memory:
+  enabled: true
+  storage_path: "data/memory/jarvis_memory.db"
+  semantic_search: true
+  max_short_term_messages: 20
+  max_retrieved_memories: 5
+  auto_memory: true
+  default_importance: "normal"
+

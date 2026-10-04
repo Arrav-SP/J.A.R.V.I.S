@@ -23,6 +23,7 @@ from app.core.session import Session, SessionManager
 from app.personality.manager import PersonalityManager
 from app.personality.models import OperatingMode
 from app.tools import ToolRegistry, WeatherTool, WebSearchTool
+from app.memory import MemoryManager
 
 if TYPE_CHECKING:
     from app.config.settings import Settings
@@ -31,9 +32,9 @@ logger = get_logger("orchestrator")
 
 
 class Orchestrator:
-    """Coordinates conversation sessions, context assembly, personality, and model invocation."""
+    """Coordinates conversation sessions, memory, context assembly, personality, and model invocation."""
 
-    def __init__(self, settings: Optional[Settings] = None) -> None:
+    def __init__(self, settings: Optional[Settings] = None, memory_manager: Optional[MemoryManager] = None) -> None:
         if settings is None:
             from app.config.settings import get_settings
 
@@ -46,6 +47,20 @@ class Orchestrator:
         )
         self.router = ModelRouter(self.settings.model)
 
+        # Initialize Memory Subsystem
+        if memory_manager is not None:
+            self.memory_manager = memory_manager
+        else:
+            resolved_mem_path = self.settings.paths.resolve_path(self.settings.memory.storage_path)
+            self.memory_manager = MemoryManager(
+                storage_path=resolved_mem_path,
+                enabled=self.settings.memory.enabled,
+                semantic_search=self.settings.memory.semantic_search,
+                max_short_term_messages=self.settings.memory.max_short_term_messages,
+                max_retrieved_memories=self.settings.memory.max_retrieved_memories,
+                allow_neural_embeddings=self.settings.memory.allow_neural_embeddings,
+            )
+
         # Initialize Tool Subsystem
         self.tools = ToolRegistry()
         self.weather_tool = WeatherTool()
@@ -54,10 +69,11 @@ class Orchestrator:
         self.tools.register(self.search_tool)
 
         logger.info(
-            "JARVIS Orchestrator initialized (provider=%s, model=%s, mode=%s, tools=%d)",
+            "JARVIS Orchestrator initialized (provider=%s, model=%s, mode=%s, memory=%s, tools=%d)",
             self.settings.model.provider,
             self.settings.model.model_name,
             self.personality_manager.get_mode().value,
+            self.memory_manager.enabled,
             len(self.tools.list_tools()),
         )
 
@@ -133,7 +149,12 @@ class Orchestrator:
         session.add_user_message(clean_text)
         logger.debug("Received input in session '%s': %s", session_id, clean_text)
 
-        # 3. Check for live real-time tools (weather / web search)
+        # 3. Check for explicit memory storage instruction (e.g., "remember that...")
+        explicit_mem = None
+        if self.settings.memory.auto_memory and self.memory_manager.enabled:
+            explicit_mem = self.memory_manager.extract_and_remember_explicit(clean_text)
+
+        # 4. Check for live real-time tools (weather / web search)
         live_tool_context = ""
         weather_loc = self._extract_weather_location(clean_text)
         if weather_loc:
@@ -159,10 +180,26 @@ class Orchestrator:
                         "Do not attempt to call external tools or output JSON function calls; respond purely in direct conversational speech."
                     )
 
-        # 4. Assemble prompt context from history using active personality prompt + live telemetry
+        # 5. Selective Memory Retrieval (query-driven)
+        memory_context = ""
+        if self.memory_manager.enabled:
+            mem_block = self.memory_manager.get_relevant_context(clean_text)
+            if mem_block:
+                memory_context = f"\n\n{mem_block}"
+
+        # 6. Assemble prompt context from history using active personality prompt + memory + live telemetry
         system_instructions = self.personality_manager.get_system_instructions()
+        if memory_context:
+            system_instructions += memory_context
         if live_tool_context:
             system_instructions += live_tool_context
+
+        # If user explicitly instructed "remember that ...", prompt the model to confirm clearly
+        if explicit_mem:
+            system_instructions += (
+                f"\n\n[SYSTEM NOTIFICATION]: The fact has been persistently saved into long-term memory: "
+                f"'{explicit_mem.content}'. Confirm succinctly and naturally that you have committed this to memory, sir."
+            )
 
         context_messages: List[ChatMessage] = self.context_manager.build_context(
             session.get_history(),

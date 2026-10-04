@@ -1,5 +1,4 @@
 """Main entry point for running JARVIS via `python -m app`."""
-"""Main entry point for running JARVIS via `python -m app`."""
 from __future__ import annotations
 
 import argparse
@@ -229,6 +228,57 @@ def run_terminal_repl(mode: str, orchestrator: Orchestrator, voice_pipeline: Opt
                 print(f"[JARVIS] Cloud API key activated ({new_key[:8]}...) and saved to .env!\n")
             else:
                 print("Usage: key <your_groq_api_key>\n")
+        elif cmd.startswith("remember "):
+            fact = prompt_input.split(maxsplit=1)[1].strip()
+            if fact:
+                try:
+                    rec = orchestrator.memory_manager.remember(fact, source="terminal_command")
+                    print(f"[JARVIS Memory] Stored in long-term memory: '{rec.content}' (ID: {rec.id[:8]})\n")
+                except Exception as err:
+                    print(f"[JARVIS Memory Error] Could not store memory: {err}\n")
+            else:
+                print("Usage: remember <fact or preference to remember>\n")
+        elif cmd.startswith("recall ") or cmd.startswith("memory search "):
+            query = prompt_input.split(maxsplit=1)[1].strip()
+            if query:
+                hits = orchestrator.memory_manager.search(query, limit=5)
+                if hits:
+                    print(f"\n[JARVIS Memory Search Results for '{query}']:")
+                    for h in hits:
+                        proj_str = f" [Project: {h.record.project}]" if h.record.project else ""
+                        print(f"  • ({h.relevance_score:.2f} | {h.match_source}) [{h.record.category.value.upper()}]{proj_str} {h.record.content} (id: {h.record.id[:8]})")
+                    print()
+                else:
+                    print(f"[JARVIS Memory] No matching memories found for '{query}'.\n")
+            else:
+                print("Usage: recall <search term>\n")
+        elif cmd == "memory" or cmd == "memories":
+            all_mems = orchestrator.memory_manager.storage.list_all(limit=20)
+            if all_mems:
+                print(f"\n[JARVIS Stored Memories ({len(all_mems)} most recent)]:")
+                for m in all_mems:
+                    proj_str = f" [{m.project}]" if m.project else ""
+                    print(f"  [{m.category.value.upper()}]{proj_str} ({m.importance.value}) {m.content} (id: {m.id[:8]})")
+                print()
+            else:
+                print("[JARVIS Memory] Memory store is currently empty.\n")
+        elif cmd.startswith("forget "):
+            target = prompt_input.split(maxsplit=1)[1].strip()
+            if target:
+                deleted_count = orchestrator.memory_manager.forget_by_content(target)
+                if deleted_count > 0:
+                    print(f"[JARVIS Memory] Deleted {deleted_count} memory record(s) matching '{target}'.\n")
+                else:
+                    # Try direct ID
+                    if orchestrator.memory_manager.forget(target):
+                        print(f"[JARVIS Memory] Deleted memory record ID {target}.\n")
+                    else:
+                        print(f"[JARVIS Memory] No memories found matching '{target}'.\n")
+            else:
+                print("Usage: forget <content or ID to remove>\n")
+        elif cmd == "clear session":
+            orchestrator.memory_manager.clear_session()
+            print("[JARVIS Memory] Session memory (short-term & working) cleared.\n")
         elif cmd == "help":
             print("JARVIS Terminal Mode Commands:")
             print("  status                   : Display current core system status")
@@ -237,6 +287,11 @@ def run_terminal_repl(mode: str, orchestrator: Orchestrator, voice_pipeline: Opt
             print("  voice on / off           : Enable or disable voice capture")
             print("  voice mode <mode>        : Switch voice mode (text, push_to_talk, wake_word)")
             print("  listen                   : Trigger a push-to-talk voice recording turn")
+            print("  remember <fact>          : Explicitly save a fact to long-term memory")
+            print("  recall <query>           : Search memories semantically and by keyword")
+            print("  memory                   : List recent persistent memories")
+            print("  forget <query/id>        : Forget/delete memories matching query or ID")
+            print("  clear session            : Clear temporary short-term and working memory")
             print("  key <api_key>            : Set Groq Cloud API key and activate online mode")
             print("  mode <name>              : Switch operating mode (normal, coding, study, research, professional, emergency)")
             print("  trait <name> <0.0-1.0>   : Adjust a personality trait (e.g. trait humor 0.8)")
