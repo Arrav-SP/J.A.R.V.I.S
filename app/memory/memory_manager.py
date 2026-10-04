@@ -343,7 +343,7 @@ class MemoryManager:
             category = MemoryCategory.PREFERENCE
 
         # Check for project scoping e.g. "my compiler project is called OptGraph" or "in OptGraph project..."
-        proj_match = re.search(r"\bproject\s+(?:called|named|is)\s+([A-Za-z0-9_-]+)", extracted, re.IGNORECASE)
+        proj_match = re.search(r"\bproject\s+(?:(?:is\s+)?(?:called|named)|is)\s+([A-Za-z0-9_-]+)", extracted, re.IGNORECASE)
         if not proj_match:
             proj_match = re.search(r"\b([A-Za-z0-9_-]+)\s+project\b", extracted, re.IGNORECASE)
 

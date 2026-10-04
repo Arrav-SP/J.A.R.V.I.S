@@ -63,24 +63,32 @@ class LocalEmbeddingProvider:
         return self._local_hash_vectorize(clean, dim=self._dim)
 
     def _local_hash_vectorize(self, text: str, dim: int = 384) -> np.ndarray:
-        """Deterministic subword / character-trigram hashed vector with TF weighting and L2 normalization."""
+        """Deterministic subword / n-gram hashed vector with CRC32, stopword pruning, and L2 normalization."""
+        import zlib
+
+        stopwords = {
+            "a", "an", "the", "is", "was", "were", "are", "be", "in", "on", "at",
+            "to", "for", "of", "with", "by", "that", "this", "it", "my", "your",
+            "i", "you", "what", "which", "who", "whom", "where", "when", "why", "how",
+        }
         vec = np.zeros(dim, dtype=np.float32)
-        tokens = re.findall(r"\b\w+\b", text.lower())
+        raw_tokens = re.findall(r"\b\w+\b", text.lower())
+        tokens = [t for t in raw_tokens if t not in stopwords]
+        if not tokens:
+            tokens = raw_tokens
         if not tokens:
             return vec
 
-        # Term frequency + subword trigrams
+        # Whole-word hash + 4-gram subword morph hashes for typo / stem tolerance
         for token in tokens:
-            # Word hash
-            h_word = abs(hash(token)) % dim
-            vec[h_word] += 2.0
+            h_word = zlib.crc32(token.encode("utf-8")) % dim
+            vec[h_word] += 3.0
 
-            # Character 3-grams for typo / morphological tolerance (e.g. project vs projects, optgraph vs opt graph)
-            if len(token) >= 3:
-                for i in range(len(token) - 2):
-                    trigram = token[i : i + 3]
-                    h_tri = abs(hash(trigram)) % dim
-                    vec[h_tri] += 1.0
+            if len(token) >= 4:
+                for i in range(len(token) - 3):
+                    ngram = token[i : i + 4]
+                    h_ng = zlib.crc32(ngram.encode("utf-8")) % dim
+                    vec[h_ng] += 1.0
 
         # L2 normalize
         norm = np.linalg.norm(vec)

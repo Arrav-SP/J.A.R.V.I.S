@@ -23,10 +23,10 @@ from app.core.session import Session, SessionManager
 from app.personality.manager import PersonalityManager
 from app.personality.models import OperatingMode
 from app.tools import ToolRegistry, WeatherTool, WebSearchTool
-from app.memory import MemoryManager
 
 if TYPE_CHECKING:
     from app.config.settings import Settings
+    from app.memory import MemoryManager
 
 logger = get_logger("orchestrator")
 
@@ -51,6 +51,8 @@ class Orchestrator:
         if memory_manager is not None:
             self.memory_manager = memory_manager
         else:
+            from app.memory import MemoryManager
+
             resolved_mem_path = self.settings.paths.resolve_path(self.settings.memory.storage_path)
             self.memory_manager = MemoryManager(
                 storage_path=resolved_mem_path,
